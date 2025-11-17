@@ -4,6 +4,7 @@ package graftel
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
 	otellog "go.opentelemetry.io/otel/log"
@@ -242,12 +243,44 @@ func (l *logsHelper) ErrorWithError(ctx context.Context, msg string, err error, 
 	l.LogWithError(ctx, LogLevelError, msg, err, attrs...)
 }
 
-// convertAttributes converte attribute.KeyValue para otellog.KeyValue.
+// convertAttributes converte attribute.KeyValue para otellog.KeyValue,
+// prefixando todos os atributos com "tags." para organização.
 func convertAttributes(attrs []attribute.KeyValue) []otellog.KeyValue {
 	logAttrs := make([]otellog.KeyValue, len(attrs))
 	for i, attr := range attrs {
-		logAttrs[i] = otellog.KeyValueFromAttribute(attr)
+		// Obter a chave como string (Key é um tipo string)
+		keyStr := string(attr.Key)
+
+		// Prefixar com "tags." se ainda não tiver o prefixo
+		if !strings.HasPrefix(keyStr, "tags.") {
+			keyStr = "tags." + keyStr
+		}
+
+		// Criar novo atributo com a chave prefixada
+		var newAttr attribute.KeyValue
+		switch attr.Value.Type() {
+		case attribute.STRING:
+			newAttr = attribute.String(keyStr, attr.Value.AsString())
+		case attribute.INT64:
+			newAttr = attribute.Int64(keyStr, attr.Value.AsInt64())
+		case attribute.FLOAT64:
+			newAttr = attribute.Float64(keyStr, attr.Value.AsFloat64())
+		case attribute.BOOL:
+			newAttr = attribute.Bool(keyStr, attr.Value.AsBool())
+		case attribute.STRINGSLICE:
+			newAttr = attribute.StringSlice(keyStr, attr.Value.AsStringSlice())
+		case attribute.INT64SLICE:
+			newAttr = attribute.Int64Slice(keyStr, attr.Value.AsInt64Slice())
+		case attribute.FLOAT64SLICE:
+			newAttr = attribute.Float64Slice(keyStr, attr.Value.AsFloat64Slice())
+		case attribute.BOOLSLICE:
+			newAttr = attribute.BoolSlice(keyStr, attr.Value.AsBoolSlice())
+		default:
+			// Fallback para string
+			newAttr = attribute.String(keyStr, attr.Value.AsString())
+		}
+
+		logAttrs[i] = otellog.KeyValueFromAttribute(newAttr)
 	}
 	return logAttrs
 }
-

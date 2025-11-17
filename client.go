@@ -366,7 +366,8 @@ func createResource(config Config) (*resource.Resource, error) {
 		attrs = append(attrs, attribute.String(k, v))
 	}
 
-	return resource.New(context.Background(),
+	// Criar resource com todos os atributos automáticos
+	res, err := resource.New(context.Background(),
 		resource.WithAttributes(attrs...),
 		resource.WithFromEnv(),
 		resource.WithProcess(),
@@ -374,4 +375,52 @@ func createResource(config Config) (*resource.Resource, error) {
 		resource.WithContainer(),
 		resource.WithHost(),
 	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Sanitizar o resource removendo campos desnecessários
+	return sanitizeResource(res), nil
+}
+
+// sanitizeResource remove campos desnecessários ou sensíveis do Resource.
+// Remove: process.command_args, process.executable.path, process.executable.name, process.owner
+func sanitizeResource(res *resource.Resource) *resource.Resource {
+	// Lista de chaves a serem removidas
+	keysToRemove := map[string]bool{
+		"process.command_args":    true, // Argumentos de linha de comando
+		"process.executable.path": true, // Caminho completo do executável
+		"process.executable.name": true, // Nome do executável
+		"process.command":         true, // Comando completo
+		"process.owner":           true, // Proprietário do processo (pode ser sensível)
+	}
+
+	// Obter todos os atributos do resource
+	attrs := res.Attributes()
+	filteredAttrs := make([]attribute.KeyValue, 0, len(attrs))
+
+	// Filtrar atributos
+	for _, attr := range attrs {
+		keyStr := string(attr.Key)
+		// Manter apenas atributos que não estão na lista de remoção
+		if !keysToRemove[keyStr] {
+			filteredAttrs = append(filteredAttrs, attr)
+		}
+	}
+
+	// Criar novo resource apenas com os atributos filtrados
+	// Se não houver atributos após filtragem, retornar o resource original
+	if len(filteredAttrs) == 0 {
+		return res
+	}
+
+	filteredRes, err := resource.New(context.Background(),
+		resource.WithAttributes(filteredAttrs...),
+	)
+	// Se houver erro ao criar resource filtrado, retornar o original
+	if err != nil {
+		return res
+	}
+
+	return filteredRes
 }
