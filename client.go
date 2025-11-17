@@ -80,7 +80,7 @@ type client struct {
 // NewClient cria uma nova instância do cliente OpenTelemetry.
 // A configuração é validada antes de criar o cliente.
 func NewClient(config Config) (Client, error) {
-	if err := config.Validate(); err != nil {
+	if err := (&config).Validate(); err != nil {
 		return nil, fmt.Errorf("configuração inválida: %w", err)
 	}
 
@@ -136,7 +136,7 @@ func (c *client) initializeMetrics(ctx context.Context) error {
 		}
 
 		// Configurar path
-		// Para Grafana Cloud com /otlp, usar /otlp/v1/metrics
+		// Para endpoints com /otlp, usar /otlp/v1/metrics
 		// Para outros casos, usar o path fornecido ou deixar padrão
 		if urlPath == "/otlp" {
 			opts = append(opts, otlpmetrichttp.WithURLPath("/otlp/v1/metrics"))
@@ -152,9 +152,9 @@ func (c *client) initializeMetrics(ctx context.Context) error {
 		// Configurar timeout
 		opts = append(opts, otlpmetrichttp.WithTimeout(c.config.ExportTimeout))
 
-		// Configurar autenticação para Grafana Cloud
-		if c.config.GrafanaCloudAPIKey != "" {
-			authHeader := buildGrafanaCloudAuthHeader(c.config.GrafanaCloudInstanceID, c.config.GrafanaCloudAPIKey)
+		// Configurar autenticação se APIKey fornecida
+		if c.config.APIKey != "" {
+			authHeader := buildAuthHeader(c.config.InstanceID, c.config.APIKey)
 			opts = append(opts, otlpmetrichttp.WithHeaders(map[string]string{
 				"Authorization": authHeader,
 			}))
@@ -195,7 +195,7 @@ func (c *client) initializeLogs(ctx context.Context) error {
 	}
 
 	// Configurar path
-	// Para Grafana Cloud com /otlp, usar /otlp/v1/logs
+	// Para endpoints com /otlp, usar /otlp/v1/logs
 	// Para outros casos, usar o path fornecido ou deixar padrão
 	if urlPath == "/otlp" {
 		opts = append(opts, otlploghttp.WithURLPath("/otlp/v1/logs"))
@@ -211,9 +211,9 @@ func (c *client) initializeLogs(ctx context.Context) error {
 	// Configurar timeout
 	opts = append(opts, otlploghttp.WithTimeout(c.config.ExportTimeout))
 
-	// Configurar autenticação para Grafana Cloud
-	if c.config.GrafanaCloudAPIKey != "" {
-		authHeader := buildGrafanaCloudAuthHeader(c.config.GrafanaCloudInstanceID, c.config.GrafanaCloudAPIKey)
+	// Configurar autenticação se APIKey fornecida
+	if c.config.APIKey != "" {
+		authHeader := buildAuthHeader(c.config.InstanceID, c.config.APIKey)
 		opts = append(opts, otlploghttp.WithHeaders(map[string]string{
 			"Authorization": authHeader,
 		}))
@@ -297,9 +297,9 @@ func (c *client) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// buildGrafanaCloudAuthHeader constrói o header de autenticação para Grafana Cloud.
+// buildAuthHeader constrói o header de autenticação.
 // O formato é: Basic <base64(instance_id:api_key)>
-func buildGrafanaCloudAuthHeader(instanceID, apiKey string) string {
+func buildAuthHeader(instanceID, apiKey string) string {
 	if instanceID != "" {
 		// Formato: instance_id:api_key codificado em base64
 		credentials := instanceID + ":" + apiKey
@@ -312,7 +312,7 @@ func buildGrafanaCloudAuthHeader(instanceID, apiKey string) string {
 
 // parseOTLPEndpoint extrai o host:port e o path de uma URL OTLP.
 // Retorna o endpoint (host:port) e o path (se houver).
-// Para Grafana Cloud, o path /otlp é removido pois o OpenTelemetry adiciona /v1/metrics ou /v1/logs automaticamente.
+// Para endpoints com path /otlp, o OpenTelemetry adiciona /v1/metrics ou /v1/logs automaticamente.
 func parseOTLPEndpoint(endpointURL string) (endpoint, urlPath string, err error) {
 	// Se não começar com http:// ou https://, assumir que é apenas host:port
 	if !strings.HasPrefix(endpointURL, "http://") && !strings.HasPrefix(endpointURL, "https://") {
@@ -335,9 +335,9 @@ func parseOTLPEndpoint(endpointURL string) (endpoint, urlPath string, err error)
 	// Extrair path
 	urlPath = parsedURL.Path
 
-	// Para Grafana Cloud com path /otlp, manter o path pois o OpenTelemetry
+	// Para endpoints com path /otlp, manter o path pois o OpenTelemetry
 	// adiciona automaticamente /v1/metrics ou /v1/logs ao path base
-	// O endpoint final será: https://otlp-gateway-prod-sa-east-1.grafana.net/otlp/v1/metrics
+	// O endpoint final será: https://host/otlp/v1/metrics
 	// Se não houver path, usar path padrão
 	if urlPath == "" {
 		urlPath = "/"
@@ -357,8 +357,8 @@ func createResource(config Config) (*resource.Resource, error) {
 	}
 
 	// Adicionar Instance ID se fornecido
-	if config.GrafanaCloudInstanceID != "" {
-		attrs = append(attrs, semconv.ServiceInstanceIDKey.String(config.GrafanaCloudInstanceID))
+	if config.InstanceID != "" {
+		attrs = append(attrs, semconv.ServiceInstanceIDKey.String(config.InstanceID))
 	}
 
 	// Adicionar atributos customizados

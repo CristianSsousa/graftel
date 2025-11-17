@@ -4,20 +4,22 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/CristianSsousa/graftel)](https://goreportcard.com/report/github.com/CristianSsousa/graftel)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Graftel** é uma biblioteca Go que facilita o uso do OpenTelemetry com Grafana, focada em **métricas e logs**. Projetada para ser simples, intuitiva e seguir as melhores práticas da comunidade Go.
+**Graftel** é uma biblioteca Go que facilita o uso do OpenTelemetry, focada em **métricas e logs**. Projetada para ser simples, intuitiva e seguir as melhores práticas da comunidade Go.
 
 ## 🚀 Características
 
-- ✅ **Inicialização simplificada** do OpenTelemetry
-- ✅ **Suporte completo para métricas**: Counter, Gauge, Histogram, UpDownCounter
-- ✅ **Logs estruturados** com múltiplos níveis (Trace, Debug, Info, Warn, Error, Fatal)
-- ✅ **Integração com Prometheus** (opcional)
-- ✅ **Exportação via OTLP HTTP** para Grafana
-- ✅ **Processamento automático de URLs** - aceita URLs completas com path
-- ✅ **API fluente** com pattern builder
-- ✅ **Interfaces bem definidas** para testabilidade
-- ✅ **Documentação completa** com exemplos práticos
-- ✅ **Compatível com Grafana Cloud** - suporta URLs com path `/otlp`
+-   ✅ **Inicialização simplificada** do OpenTelemetry
+-   ✅ **Suporte completo para métricas**: Counter, Gauge, Histogram, UpDownCounter
+-   ✅ **Logs estruturados** com múltiplos níveis (Trace, Debug, Info, Warn, Error, Fatal)
+-   ✅ **Integração com Prometheus** (opcional)
+-   ✅ **Exportação via OTLP HTTP** para sistemas de observabilidade
+-   ✅ **Processamento automático de URLs** - aceita URLs completas com path
+-   ✅ **Configuração via variáveis de ambiente** - suporte completo a ENVs
+-   ✅ **API fluente** com pattern builder
+-   ✅ **Interfaces bem definidas** para testabilidade
+-   ✅ **Documentação completa** com exemplos práticos
+-   ✅ **Atributos de log organizados** - prefixo automático `tags.` para melhor estruturação
+-   ✅ **Resource sanitizado** - remove campos sensíveis automaticamente
 
 ## 📦 Instalação
 
@@ -41,6 +43,12 @@ import (
 
 func main() {
     // Configurar usando o pattern de builder
+    // As configurações podem ser fornecidas via variáveis de ambiente GRAFTEL_*
+    // ou explicitamente via métodos With*. A ordem de prioridade é:
+    // 1. Valores passados via With* (maior prioridade)
+    // 2. Variáveis de ambiente GRAFTEL_*
+    // 3. Valores padrão
+
     config := graftel.NewConfig("meu-servico").
         WithServiceVersion("1.0.0").
         WithOTLPEndpoint("http://localhost:4318"). // Aceita URLs completas com path
@@ -65,10 +73,10 @@ func main() {
 
 A biblioteca processa automaticamente diferentes formatos de URL:
 
-- **URLs completas**: `https://example.com:4318/v1/traces` → extrai host:port e path
-- **URLs sem path**: `http://localhost:4318` → usa path padrão
-- **Host:port simples**: `localhost:4318` → funciona normalmente
-- **Host:port com path**: `localhost:4318/otlp` → extrai path corretamente
+-   **URLs completas**: `https://example.com:4318/v1/traces` → extrai host:port e path
+-   **URLs sem path**: `http://localhost:4318` → usa path padrão
+-   **Host:port simples**: `localhost:4318` → funciona normalmente
+-   **Host:port com path**: `localhost:4318/otlp` → extrai path corretamente
 
 O processamento é feito automaticamente, então você pode usar qualquer formato que preferir.
 
@@ -160,6 +168,8 @@ gauge, err := metrics.NewGauge(
 logs := client.NewLogsHelper("meu-servico/logs")
 
 // Logs simples
+// Nota: Todos os atributos customizados são automaticamente prefixados com "tags."
+// para melhor organização (ex: "port" vira "tags.port")
 logs.Info(ctx, "Servidor iniciado",
     attribute.String("port", "8080"),
     attribute.String("environment", "production"),
@@ -284,49 +294,48 @@ config := graftel.NewConfig("meu-servico").
 
 ### Opções de Configuração Disponíveis
 
-| Método | Descrição | Padrão |
-|--------|-----------|--------|
-| `WithServiceVersion(version)` | Define a versão do serviço | `""` |
-| `WithOTLPEndpoint(endpoint)` | Define o endpoint OTLP (aceita URLs completas) | `"http://localhost:4318"` |
-| `WithGrafanaCloudAPIKey(key)` | Define a chave de API do Grafana Cloud | `""` |
-| `WithGrafanaCloudInstanceID(id)` | Define o ID da instância do Grafana Cloud (usado como service.instance.id) | `""` |
-| `WithPrometheusEndpoint(endpoint)` | Define o endpoint para expor métricas Prometheus | `""` |
-| `WithResourceAttribute(key, value)` | Adiciona um atributo ao resource | `{}` |
-| `WithResourceAttributes(attrs)` | Adiciona múltiplos atributos ao resource | `{}` |
-| `WithMetricExportInterval(interval)` | Define o intervalo de exportação de métricas | `30s` |
-| `WithLogExportInterval(interval)` | Define o intervalo de exportação de logs | `30s` |
-| `WithInsecure(insecure)` | Desabilita TLS (apenas para desenvolvimento) | `false` |
+| Método                               | Descrição                                                 | ENV                              | Padrão                    |
+| ------------------------------------ | --------------------------------------------------------- | -------------------------------- | ------------------------- |
+| `WithServiceVersion(version)`        | Define a versão do serviço                                | `GRAFTEL_SERVICE_VERSION`        | `""`                      |
+| `WithOTLPEndpoint(endpoint)`         | Define o endpoint OTLP (aceita URLs completas)            | `GRAFTEL_OTLP_ENDPOINT`          | `"http://localhost:4318"` |
+| `WithAPIKey(key)`                    | Define a chave de API para autenticação                   | `GRAFTEL_API_KEY`                | `""`                      |
+| `WithInstanceID(id)`                 | Define o ID da instância (usado como service.instance.id) | `GRAFTEL_INSTANCE_ID`            | `""`                      |
+| `WithPrometheusEndpoint(endpoint)`   | Define o endpoint para expor métricas Prometheus          | `GRAFTEL_PROMETHEUS_ENDPOINT`    | `""`                      |
+| `WithResourceAttribute(key, value)`  | Adiciona um atributo ao resource                          | -                                | `{}`                      |
+| `WithResourceAttributes(attrs)`      | Adiciona múltiplos atributos ao resource                  | -                                | `{}`                      |
+| `WithMetricExportInterval(interval)` | Define o intervalo de exportação de métricas              | `GRAFTEL_METRIC_EXPORT_INTERVAL` | `30s`                     |
+| `WithLogExportInterval(interval)`    | Define o intervalo de exportação de logs                  | `GRAFTEL_LOG_EXPORT_INTERVAL`    | `30s`                     |
+| `WithExportTimeout(timeout)`         | Define o timeout para exportação                          | `GRAFTEL_EXPORT_TIMEOUT`         | `10s`                     |
+| `WithInsecure(insecure)`             | Desabilita TLS (apenas para desenvolvimento)              | `GRAFTEL_INSECURE`               | `false`                   |
 
-## ☁️ Integração com Grafana Cloud
+## 🔧 Configuração via Variáveis de Ambiente
 
-### Configuração Básica
+A biblioteca suporta configuração completa via variáveis de ambiente, facilitando o deploy em diferentes ambientes sem alterar código.
 
-```go
-config := graftel.NewConfig("meu-servico").
-    WithServiceVersion("1.0.0").
-    WithOTLPEndpoint("https://otlp-gateway-prod-us-central-0.grafana.net/otlp").
-    WithGrafanaCloudAPIKey("sua-chave-api-aqui").
-    WithGrafanaCloudInstanceID("seu-instance-id"). // Opcional, mas recomendado
-    WithInsecure(false) // Grafana Cloud usa HTTPS
-```
+### Ordem de Prioridade
 
-**Importante:** 
-- A URL do Grafana Cloud já inclui o path `/otlp`. A biblioteca processa automaticamente essa URL, extraindo o host e o path corretamente.
-- O Instance ID é opcional, mas recomendado para identificar unicamente cada instância do serviço. Ele será usado como `service.instance.id` no resource OpenTelemetry.
+As configurações são carregadas na seguinte ordem (maior para menor prioridade):
 
-### Obter Chave de API e Instance ID do Grafana Cloud
+1. **Valores passados via métodos `With*`** (maior prioridade)
+2. **Variáveis de ambiente `GRAFTEL_*`**
+3. **Valores padrão**
 
-1. Acesse o [Grafana Cloud](https://grafana.com)
-2. Vá em **Connections** > **Add new connection**
-3. Selecione **OpenTelemetry**
-4. Copie a chave de API fornecida
-5. Copie o Instance ID (se disponível)
-6. Configure as variáveis de ambiente:
-   - `GRAFANA_CLOUD_API_KEY` - Chave de API (obrigatória)
-   - `GRAFANA_CLOUD_INSTANCE_ID` - ID da instância (opcional, mas recomendado)
-   - `OTLP_ENDPOINT` - Endpoint OTLP (opcional, tem valor padrão)
+### Variáveis de Ambiente Disponíveis
 
-### Exemplo Completo com Variáveis de Ambiente
+| Variável                         | Descrição                           | Exemplo                         |
+| -------------------------------- | ----------------------------------- | ------------------------------- |
+| `GRAFTEL_SERVICE_NAME`           | Nome do serviço                     | `meu-servico`                   |
+| `GRAFTEL_SERVICE_VERSION`        | Versão do serviço                   | `1.0.0`                         |
+| `GRAFTEL_OTLP_ENDPOINT`          | Endpoint OTLP                       | `https://otlp.example.com/otlp` |
+| `GRAFTEL_API_KEY`                | Chave de API para autenticação      | `sua-chave-api`                 |
+| `GRAFTEL_INSTANCE_ID`            | ID da instância                     | `instance-123`                  |
+| `GRAFTEL_PROMETHEUS_ENDPOINT`    | Endpoint Prometheus                 | `:8080`                         |
+| `GRAFTEL_INSECURE`               | Desabilitar TLS                     | `true` ou `false`               |
+| `GRAFTEL_METRIC_EXPORT_INTERVAL` | Intervalo de exportação de métricas | `30s`                           |
+| `GRAFTEL_LOG_EXPORT_INTERVAL`    | Intervalo de exportação de logs     | `30s`                           |
+| `GRAFTEL_EXPORT_TIMEOUT`         | Timeout para exportação             | `10s`                           |
+
+### Exemplo: Usando Apenas Variáveis de Ambiente
 
 ```go
 package main
@@ -334,58 +343,88 @@ package main
 import (
     "context"
     "log"
-    "os"
-    
+
     "github.com/CristianSsousa/graftel"
 )
 
 func main() {
-    // Obter configurações do ambiente
-    apiKey := os.Getenv("GRAFANA_CLOUD_API_KEY")
-    otlpEndpoint := os.Getenv("OTLP_ENDPOINT")
-    instanceID := os.Getenv("GRAFANA_CLOUD_INSTANCE_ID")
-    
-    if otlpEndpoint == "" {
-        otlpEndpoint = "https://otlp-gateway-prod-us-central-0.grafana.net/otlp"
-    }
-    
-    config := graftel.NewConfig("meu-servico").
-        WithServiceVersion("1.0.0").
-        WithOTLPEndpoint(otlpEndpoint).
-        WithGrafanaCloudAPIKey(apiKey).
-        WithInsecure(false)
-    
-    // Adicionar Instance ID se fornecido
-    if instanceID != "" {
-        config = config.WithGrafanaCloudInstanceID(instanceID)
-    }
-    
+    // Todas as configurações vêm das variáveis de ambiente GRAFTEL_*
+    // Configure-as antes de executar:
+    // export GRAFTEL_SERVICE_NAME="meu-servico"
+    // export GRAFTEL_OTLP_ENDPOINT="https://otlp.example.com/otlp"
+    // export GRAFTEL_API_KEY="sua-chave"
+
+    config := graftel.NewConfig("") // ServiceName será lido de GRAFTEL_SERVICE_NAME
+
     client, err := graftel.NewClient(config)
     if err != nil {
         log.Fatal(err)
     }
-    
+
     ctx := context.Background()
     if err := client.Initialize(ctx); err != nil {
         log.Fatal(err)
     }
     defer client.Shutdown(ctx)
-    
+
     // Usar métricas e logs...
 }
 ```
 
-### Exemplo Completo
+### Exemplo: Misturando ENV e With\*
 
-Veja `examples/grafana-cloud/main.go` para um exemplo completo de integração.
+```go
+// Valores passados via With* têm prioridade sobre ENV
+config := graftel.NewConfig("meu-servico"). // ServiceName explícito
+    WithServiceVersion("1.0.0").            // Version explícita
+    // OTLPEndpoint será lido de GRAFTEL_OTLP_ENDPOINT se não fornecido
+    // APIKey será lido de GRAFTEL_API_KEY se não fornecido
+```
+
+## 🏷️ Atributos de Log Organizados
+
+Todos os atributos customizados adicionados aos logs são automaticamente prefixados com `tags.` para melhor organização e estruturação dos metadados.
+
+```go
+logs.Info(ctx, "Requisição processada",
+    attribute.String("method", "GET"),      // Vira "tags.method"
+    attribute.String("path", "/api/users"), // Vira "tags.path"
+    attribute.Int("status", 200),           // Vira "tags.status"
+)
+```
+
+Os atributos do Resource do OpenTelemetry (como `process.pid`, `host.name`, `os.type`, etc.) não são prefixados, mantendo a compatibilidade com os padrões do OpenTelemetry.
+
+## 🛡️ Resource Sanitizado
+
+A biblioteca automaticamente remove campos sensíveis ou desnecessários do Resource OpenTelemetry:
+
+**Campos removidos:**
+
+-   `process.command_args` - Argumentos de linha de comando
+-   `process.executable.path` - Caminho completo do executável
+-   `process.executable.name` - Nome do executável
+-   `process.command` - Comando completo
+-   `process.owner` - Proprietário do processo
+
+**Campos mantidos:**
+
+-   `process.pid` - ID do processo (útil para debugging)
+-   `process.runtime.*` - Informações sobre o runtime (Go version, etc.)
+-   `host.name` - Nome do host
+-   `os.type`, `os.description` - Informações do sistema operacional
+-   `service.name`, `service.version` - Informações do serviço
+-   `service.instance.id` - ID da instância (se configurado)
+
+Isso reduz o volume de dados enviados e remove informações sensíveis dos logs.
 
 ## 📚 Exemplos
 
 A biblioteca inclui exemplos completos na pasta `examples/`:
 
-- **`examples/basic/`** - Exemplo básico com métricas e logs usando endpoint local
-- **`examples/prometheus/`** - Exemplo com Prometheus para expor métricas
-- **`examples/grafana-cloud/`** - Exemplo de integração com Grafana Cloud usando URL completa com path
+-   **`examples/basic/`** - Exemplo básico com métricas e logs usando endpoint local
+-   **`examples/prometheus/`** - Exemplo com Prometheus para expor métricas
+-   **`examples/grafana-cloud/`** - Exemplo usando variáveis de ambiente e autenticação
 
 Para executar um exemplo:
 
@@ -399,21 +438,23 @@ cd examples/prometheus
 go run main.go
 # Acesse http://localhost:8080/metrics
 
-# Exemplo com Grafana Cloud
+# Exemplo com configuração via variáveis de ambiente
 cd examples/grafana-cloud
-export GRAFANA_CLOUD_API_KEY="sua-chave-aqui"
-export GRAFANA_CLOUD_INSTANCE_ID="seu-instance-id"  # Opcional
-export OTLP_ENDPOINT="https://otlp-gateway-prod-us-central-0.grafana.net/otlp"
+export GRAFTEL_SERVICE_NAME="meu-servico"
+export GRAFTEL_OTLP_ENDPOINT="https://otlp.example.com/otlp"
+export GRAFTEL_API_KEY="sua-chave-aqui"
+export GRAFTEL_INSTANCE_ID="seu-instance-id"  # Opcional
 go run main.go
 ```
 
 ### Exemplo: Uso com Diferentes Formatos de URL
 
 ```go
-// Exemplo 1: URL completa com path (Grafana Cloud)
+// Exemplo 1: URL completa com path e autenticação
 config1 := graftel.NewConfig("servico-1").
-    WithOTLPEndpoint("https://otlp-gateway-prod-us-central-0.grafana.net/otlp").
-    WithGrafanaCloudAPIKey("sua-chave").
+    WithOTLPEndpoint("https://otlp.example.com/otlp").
+    WithAPIKey("sua-chave").
+    WithInstanceID("instance-123").
     WithInsecure(false)
 
 // Exemplo 2: URL local sem path
@@ -462,15 +503,15 @@ go test ./graftel/... -v
 
 ## 📋 Requisitos
 
-- Go 1.23 ou superior
-- OpenTelemetry SDK v1.38.0 ou superior
+-   Go 1.23 ou superior
+-   OpenTelemetry SDK v1.38.0 ou superior
 
 ## 🔗 Dependências Principais
 
-- `go.opentelemetry.io/otel` - OpenTelemetry Go SDK
-- `go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp` - Exportador OTLP para métricas
-- `go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp` - Exportador OTLP para logs
-- `go.opentelemetry.io/otel/exporters/prometheus` - Exportador Prometheus
+-   `go.opentelemetry.io/otel` - OpenTelemetry Go SDK
+-   `go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp` - Exportador OTLP para métricas
+-   `go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp` - Exportador OTLP para logs
+-   `go.opentelemetry.io/otel/exporters/prometheus` - Exportador Prometheus
 
 ## 🤝 Contribuindo
 
@@ -490,20 +531,18 @@ Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICE
 
 **Cristian S. Sousa**
 
-- GitHub: [@CristianSsousa](https://github.com/CristianSsousa)
-- Repositório: [github.com/CristianSsousa/graftel](https://github.com/CristianSsousa/graftel)
+-   GitHub: [@CristianSsousa](https://github.com/CristianSsousa)
+-   Repositório: [github.com/CristianSsousa/graftel](https://github.com/CristianSsousa/graftel)
 
 ## 🙏 Agradecimentos
 
-- [OpenTelemetry](https://opentelemetry.io/) pela excelente especificação e SDK
-- [Grafana](https://grafana.com/) pela plataforma de observabilidade
-- Comunidade Go por todas as ferramentas e bibliotecas incríveis
+-   [OpenTelemetry](https://opentelemetry.io/) pela excelente especificação e SDK
+-   Comunidade Go por todas as ferramentas e bibliotecas incríveis
 
 ## 📖 Documentação Adicional
 
-- [OpenTelemetry Documentation](https://opentelemetry.io/docs/)
-- [Grafana Cloud Documentation](https://grafana.com/docs/grafana-cloud/)
-- [Go Documentation](https://go.dev/doc/)
+-   [OpenTelemetry Documentation](https://opentelemetry.io/docs/)
+-   [Go Documentation](https://go.dev/doc/)
 
 ---
 

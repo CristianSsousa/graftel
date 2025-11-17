@@ -81,5 +81,5 @@ func main() {
 		)
 	}
 
-	fmt.Println("Exemplo concluído! Verifique o Grafana para ver as métricas e logs.")
+	fmt.Println("Exemplo concluído! Verifique o sistema de observabilidade para ver as métricas e logs.")
 }

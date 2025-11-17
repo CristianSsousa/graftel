@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"github.com/CristianSsousa/graftel"
@@ -12,33 +11,25 @@ import (
 )
 
 func main() {
-	// Obter chave de API do Grafana Cloud (configure via variável de ambiente)
-	apiKey := os.Getenv("GRAFANA_CLOUD_API_KEY")
-	if apiKey == "" {
-		log.Fatal("GRAFANA_CLOUD_API_KEY não configurada. Configure a variável de ambiente com sua chave de API do Grafana Cloud.")
-	}
+	// As configurações podem ser fornecidas via variáveis de ambiente GRAFTEL_*
+	// ou explicitamente via métodos With*. A ordem de prioridade é:
+	// 1. Valores passados via With* (maior prioridade)
+	// 2. Variáveis de ambiente GRAFTEL_*
+	// 3. Valores padrão
 
-	// Obter endpoint OTLP do Grafana Cloud (configure via variável de ambiente)
-	otlpEndpoint := os.Getenv("OTLP_ENDPOINT")
-	if otlpEndpoint == "" {
-		// Endpoint padrão do Grafana Cloud (ajuste conforme sua região)
-		otlpEndpoint = "https://otlp-gateway-prod-us-central-0.grafana.net/otlp"
-	}
-
-	// Obter Instance ID do Grafana Cloud (opcional, mas recomendado)
-	instanceID := os.Getenv("GRAFANA_CLOUD_INSTANCE_ID")
-
-	// Configurar OpenTelemetry para Grafana Cloud usando o pattern de builder
-	config := graftel.NewConfig("meu-servico-grafana").
+	// Exemplo: usando variáveis de ambiente (recomendado)
+	// Configure: GRAFTEL_SERVICE_NAME, GRAFTEL_OTLP_ENDPOINT, GRAFTEL_API_KEY, etc.
+	config := graftel.NewConfig("meu-servico").
 		WithServiceVersion("1.0.0").
-		WithOTLPEndpoint(otlpEndpoint).
-		WithGrafanaCloudAPIKey(apiKey).
-		WithInsecure(false) // Grafana Cloud usa HTTPS
+		WithInsecure(false) // HTTPS por padrão
 
-	// Adicionar Instance ID se fornecido
-	if instanceID != "" {
-		config = config.WithGrafanaCloudInstanceID(instanceID)
-	}
+	// Ou fornecer explicitamente (sobrescreve ENV se existir)
+	// config := graftel.NewConfig("meu-servico").
+	// 	WithServiceVersion("1.0.0").
+	// 	WithOTLPEndpoint("https://otlp-gateway-prod-us-central-0.grafana.net/otlp").
+	// 	WithAPIKey(os.Getenv("GRAFTEL_API_KEY")).
+	// 	WithInstanceID(os.Getenv("GRAFTEL_INSTANCE_ID")).
+	// 	WithInsecure(false)
 
 	config = config.
 		WithResourceAttributes(map[string]string{
@@ -91,9 +82,9 @@ func main() {
 	}
 
 	// Log inicial
-	logs.Info(ctx, "Servidor iniciado e conectado ao Grafana Cloud",
-		attribute.String("service", config.ServiceName),
-		attribute.String("version", config.ServiceVersion),
+	logs.Info(ctx, "Servidor iniciado e conectado",
+		attribute.String("service", "meu-servico"),
+		attribute.String("version", "1.0.0"),
 	)
 
 	// Simular atividade do servidor
@@ -138,9 +129,8 @@ func main() {
 		}
 	}
 
-	logs.Info(ctx, "Simulação concluída. Verifique o Grafana Cloud para ver as métricas e logs.")
+	logs.Info(ctx, "Simulação concluída. Verifique o sistema de observabilidade para ver as métricas e logs.")
 
 	fmt.Println("✅ Exemplo concluído!")
-	fmt.Println("📊 Verifique o Grafana Cloud para ver as métricas e logs.")
-	fmt.Println("🔗 Acesse: https://grafana.com/orgs/<seu-org>/")
+	fmt.Println("📊 Verifique o sistema de observabilidade para ver as métricas e logs.")
 }
