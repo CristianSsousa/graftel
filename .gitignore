@@ -1,0 +1,78 @@
+# Binários compilados
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Arquivos de teste
+*.test
+*.prof
+
+# Diretórios de build
+/bin/
+/dist/
+/build/
+
+# Arquivos do Go
+go.work
+go.work.sum
+
+# Dependências (se usar vendoring)
+/vendor/
+
+# IDEs e editores
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+
+# Arquivos temporários
+tmp/
+temp/
+*.tmp
+
+# Arquivos de ambiente
+.env
+.env.local
+.env.*.local
+
+# Arquivos de configuração local
+config.local.*
+*.local
+
+# Coverage
+coverage.txt
+coverage.html
+*.coverprofile
+
+# Air (live reload)
+tmp/
+
+# Dep (ferramenta de dependências)
+.dep/
+
+# Glide (gerenciador de dependências)
+glide.lock
+
+# GoLand
+.idea/
+
+# VS Code
+.vscode/
+
+# Arquivos de backup
+*.bak
+*.backup
+
+# Arquivos de sistema
+Thumbs.db
+.DS_Store
+
