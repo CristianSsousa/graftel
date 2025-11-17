@@ -288,13 +288,12 @@ go run main.go
 
 ```
 .
-├── graftel/              # Pacote principal da biblioteca
-│   ├── client.go         # Cliente principal e inicialização
-│   ├── config.go         # Configuração com pattern builder
-│   ├── metrics.go        # Helpers para métricas
-│   ├── logs.go           # Helpers para logs
-│   ├── errors.go         # Erros customizados
-│   └── client_test.go    # Testes unitários
+├── client.go             # Cliente principal e inicialização
+├── config.go             # Configuração com pattern builder
+├── metrics.go            # Helpers para métricas
+├── logs.go               # Helpers para logs
+├── errors.go             # Erros customizados
+├── client_test.go        # Testes unitários
 ├── examples/             # Exemplos de uso
 │   ├── basic/            # Exemplo básico
 │   ├── prometheus/       # Exemplo com Prometheus
