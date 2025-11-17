@@ -22,12 +22,15 @@ package graftel
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	otellog "go.opentelemetry.io/otel/log"
 	otelmetric "go.opentelemetry.io/otel/metric"
@@ -122,8 +125,23 @@ func (c *client) initializeMetrics(ctx context.Context) error {
 		reader = exporter
 	} else {
 		// Caso contrário, usar OTLP HTTP
+		// Parse da URL para extrair endpoint e path
+		endpoint, urlPath, err := parseOTLPEndpoint(c.config.OTLPEndpoint)
+		if err != nil {
+			return fmt.Errorf("falha ao processar endpoint OTLP: %w", err)
+		}
+
 		opts := []otlpmetrichttp.Option{
-			otlpmetrichttp.WithEndpoint(c.config.OTLPEndpoint),
+			otlpmetrichttp.WithEndpoint(endpoint),
+		}
+
+		// Configurar path
+		// Para Grafana Cloud com /otlp, usar /otlp/v1/metrics
+		// Para outros casos, usar o path fornecido ou deixar padrão
+		if urlPath == "/otlp" {
+			opts = append(opts, otlpmetrichttp.WithURLPath("/otlp/v1/metrics"))
+		} else if urlPath != "" && urlPath != "/" {
+			opts = append(opts, otlpmetrichttp.WithURLPath(urlPath))
 		}
 
 		// Configurar TLS
@@ -131,10 +149,14 @@ func (c *client) initializeMetrics(ctx context.Context) error {
 			opts = append(opts, otlpmetrichttp.WithInsecure())
 		}
 
+		// Configurar timeout
+		opts = append(opts, otlpmetrichttp.WithTimeout(c.config.ExportTimeout))
+
 		// Configurar autenticação para Grafana Cloud
 		if c.config.GrafanaCloudAPIKey != "" {
+			authHeader := buildGrafanaCloudAuthHeader(c.config.GrafanaCloudInstanceID, c.config.GrafanaCloudAPIKey)
 			opts = append(opts, otlpmetrichttp.WithHeaders(map[string]string{
-				"Authorization": "Basic " + c.config.GrafanaCloudAPIKey,
+				"Authorization": authHeader,
 			}))
 		}
 
@@ -162,8 +184,23 @@ func (c *client) initializeMetrics(ctx context.Context) error {
 
 // initializeLogs configura o provider de logs.
 func (c *client) initializeLogs(ctx context.Context) error {
+	// Parse da URL para extrair endpoint e path
+	endpoint, urlPath, err := parseOTLPEndpoint(c.config.OTLPEndpoint)
+	if err != nil {
+		return fmt.Errorf("falha ao processar endpoint OTLP: %w", err)
+	}
+
 	opts := []otlploghttp.Option{
-		otlploghttp.WithEndpoint(c.config.OTLPEndpoint),
+		otlploghttp.WithEndpoint(endpoint),
+	}
+
+	// Configurar path
+	// Para Grafana Cloud com /otlp, usar /otlp/v1/logs
+	// Para outros casos, usar o path fornecido ou deixar padrão
+	if urlPath == "/otlp" {
+		opts = append(opts, otlploghttp.WithURLPath("/otlp/v1/logs"))
+	} else if urlPath != "" && urlPath != "/" {
+		opts = append(opts, otlploghttp.WithURLPath(urlPath))
 	}
 
 	// Configurar TLS
@@ -171,10 +208,14 @@ func (c *client) initializeLogs(ctx context.Context) error {
 		opts = append(opts, otlploghttp.WithInsecure())
 	}
 
+	// Configurar timeout
+	opts = append(opts, otlploghttp.WithTimeout(c.config.ExportTimeout))
+
 	// Configurar autenticação para Grafana Cloud
 	if c.config.GrafanaCloudAPIKey != "" {
+		authHeader := buildGrafanaCloudAuthHeader(c.config.GrafanaCloudInstanceID, c.config.GrafanaCloudAPIKey)
 		opts = append(opts, otlploghttp.WithHeaders(map[string]string{
-			"Authorization": "Basic " + c.config.GrafanaCloudAPIKey,
+			"Authorization": authHeader,
 		}))
 	}
 
@@ -256,6 +297,55 @@ func (c *client) Shutdown(ctx context.Context) error {
 	return nil
 }
 
+// buildGrafanaCloudAuthHeader constrói o header de autenticação para Grafana Cloud.
+// O formato é: Basic <base64(instance_id:api_key)>
+func buildGrafanaCloudAuthHeader(instanceID, apiKey string) string {
+	if instanceID != "" {
+		// Formato: instance_id:api_key codificado em base64
+		credentials := instanceID + ":" + apiKey
+		encoded := base64.StdEncoding.EncodeToString([]byte(credentials))
+		return "Basic " + encoded
+	}
+	// Se não tiver instance ID, usar apenas a API key (formato alternativo)
+	return "Basic " + apiKey
+}
+
+// parseOTLPEndpoint extrai o host:port e o path de uma URL OTLP.
+// Retorna o endpoint (host:port) e o path (se houver).
+// Para Grafana Cloud, o path /otlp é removido pois o OpenTelemetry adiciona /v1/metrics ou /v1/logs automaticamente.
+func parseOTLPEndpoint(endpointURL string) (endpoint, urlPath string, err error) {
+	// Se não começar com http:// ou https://, assumir que é apenas host:port
+	if !strings.HasPrefix(endpointURL, "http://") && !strings.HasPrefix(endpointURL, "https://") {
+		// Se contém /, pode ser host:port/path
+		if idx := strings.Index(endpointURL, "/"); idx != -1 {
+			return endpointURL[:idx], endpointURL[idx:], nil
+		}
+		return endpointURL, "", nil
+	}
+
+	// Parse da URL completa
+	parsedURL, err := url.Parse(endpointURL)
+	if err != nil {
+		return "", "", fmt.Errorf("falha ao fazer parse da URL: %w", err)
+	}
+
+	// Montar endpoint como host:port (o OpenTelemetry lida com portas padrão automaticamente)
+	endpoint = parsedURL.Host
+
+	// Extrair path
+	urlPath = parsedURL.Path
+
+	// Para Grafana Cloud com path /otlp, manter o path pois o OpenTelemetry
+	// adiciona automaticamente /v1/metrics ou /v1/logs ao path base
+	// O endpoint final será: https://otlp-gateway-prod-sa-east-1.grafana.net/otlp/v1/metrics
+	// Se não houver path, usar path padrão
+	if urlPath == "" {
+		urlPath = "/"
+	}
+
+	return endpoint, urlPath, nil
+}
+
 // createResource cria o resource OpenTelemetry.
 func createResource(config Config) (*resource.Resource, error) {
 	attrs := []attribute.KeyValue{
@@ -264,6 +354,11 @@ func createResource(config Config) (*resource.Resource, error) {
 
 	if config.ServiceVersion != "" {
 		attrs = append(attrs, semconv.ServiceVersionKey.String(config.ServiceVersion))
+	}
+
+	// Adicionar Instance ID se fornecido
+	if config.GrafanaCloudInstanceID != "" {
+		attrs = append(attrs, semconv.ServiceInstanceIDKey.String(config.GrafanaCloudInstanceID))
 	}
 
 	// Adicionar atributos customizados
@@ -280,4 +375,3 @@ func createResource(config Config) (*resource.Resource, error) {
 		resource.WithHost(),
 	)
 }
-

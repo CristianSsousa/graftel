@@ -23,6 +23,10 @@ type Config struct {
 	// GrafanaCloudAPIKey é a chave de API do Grafana Cloud (obrigatória se usar Grafana Cloud).
 	GrafanaCloudAPIKey string
 
+	// GrafanaCloudInstanceID é o ID da instância do Grafana Cloud (opcional).
+	// Se fornecido, será usado como service.instance.id no resource.
+	GrafanaCloudInstanceID string
+
 	// PrometheusEndpoint é o endpoint para expor métricas Prometheus (ex: :8080).
 	// Se vazio, não expõe endpoint Prometheus.
 	PrometheusEndpoint string
@@ -38,6 +42,10 @@ type Config struct {
 	// Padrão: 30 segundos
 	LogExportInterval time.Duration
 
+	// ExportTimeout é o timeout para exportação de dados OTLP.
+	// Padrão: 10 segundos
+	ExportTimeout time.Duration
+
 	// Insecure desabilita TLS (apenas para desenvolvimento local).
 	Insecure bool
 }
@@ -50,6 +58,7 @@ func NewConfig(serviceName string) Config {
 		OTLPEndpoint:        "http://localhost:4318",
 		MetricExportInterval: 30 * time.Second,
 		LogExportInterval:    30 * time.Second,
+		ExportTimeout:        10 * time.Second,
 		ResourceAttributes:  make(map[string]string),
 	}
 }
@@ -72,6 +81,10 @@ func (c Config) Validate() error {
 		c.LogExportInterval = 30 * time.Second
 	}
 
+	if c.ExportTimeout == 0 {
+		c.ExportTimeout = 10 * time.Second
+	}
+
 	return nil
 }
 
@@ -90,6 +103,13 @@ func (c Config) WithOTLPEndpoint(endpoint string) Config {
 // WithGrafanaCloudAPIKey define a chave de API do Grafana Cloud.
 func (c Config) WithGrafanaCloudAPIKey(apiKey string) Config {
 	c.GrafanaCloudAPIKey = apiKey
+	return c
+}
+
+// WithGrafanaCloudInstanceID define o ID da instância do Grafana Cloud.
+// Este ID será usado como service.instance.id no resource OpenTelemetry.
+func (c Config) WithGrafanaCloudInstanceID(instanceID string) Config {
+	c.GrafanaCloudInstanceID = instanceID
 	return c
 }
 
@@ -128,6 +148,12 @@ func (c Config) WithMetricExportInterval(interval time.Duration) Config {
 // WithLogExportInterval define o intervalo de exportação de logs.
 func (c Config) WithLogExportInterval(interval time.Duration) Config {
 	c.LogExportInterval = interval
+	return c
+}
+
+// WithExportTimeout define o timeout para exportação de dados OTLP.
+func (c Config) WithExportTimeout(timeout time.Duration) Config {
+	c.ExportTimeout = timeout
 	return c
 }
 

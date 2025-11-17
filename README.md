@@ -13,10 +13,11 @@
 - ✅ **Logs estruturados** com múltiplos níveis (Trace, Debug, Info, Warn, Error, Fatal)
 - ✅ **Integração com Prometheus** (opcional)
 - ✅ **Exportação via OTLP HTTP** para Grafana
+- ✅ **Processamento automático de URLs** - aceita URLs completas com path
 - ✅ **API fluente** com pattern builder
 - ✅ **Interfaces bem definidas** para testabilidade
 - ✅ **Documentação completa** com exemplos práticos
-- ✅ **Compatível com Grafana Cloud**
+- ✅ **Compatível com Grafana Cloud** - suporta URLs com path `/otlp`
 
 ## 📦 Instalação
 
@@ -42,8 +43,8 @@ func main() {
     // Configurar usando o pattern de builder
     config := graftel.NewConfig("meu-servico").
         WithServiceVersion("1.0.0").
-        WithOTLPEndpoint("http://localhost:4318").
-        WithInsecure(true) // Para desenvolvimento local
+        WithOTLPEndpoint("http://localhost:4318"). // Aceita URLs completas com path
+        WithInsecure(true) // Para desenvolvimento local (HTTP sem TLS)
 
     client, err := graftel.NewClient(config)
     if err != nil {
@@ -59,6 +60,17 @@ func main() {
     // Usar métricas e logs...
 }
 ```
+
+### Processamento de URLs
+
+A biblioteca processa automaticamente diferentes formatos de URL:
+
+- **URLs completas**: `https://example.com:4318/v1/traces` → extrai host:port e path
+- **URLs sem path**: `http://localhost:4318` → usa path padrão
+- **Host:port simples**: `localhost:4318` → funciona normalmente
+- **Host:port com path**: `localhost:4318/otlp` → extrai path corretamente
+
+O processamento é feito automaticamente, então você pode usar qualquer formato que preferir.
 
 ## 📊 Métricas
 
@@ -204,6 +216,30 @@ logs.ErrorWithError(ctx, "Erro ao processar", err,
 
 ## ⚙️ Configuração
 
+### Formatos de URL Suportados
+
+A biblioteca aceita diferentes formatos de URL para o endpoint OTLP:
+
+```go
+// URL completa com protocolo e path (recomendado)
+config := graftel.NewConfig("meu-servico").
+    WithOTLPEndpoint("https://otlp-gateway-prod-us-central-0.grafana.net/otlp")
+
+// URL completa sem path (usa path padrão)
+config := graftel.NewConfig("meu-servico").
+    WithOTLPEndpoint("http://localhost:4318")
+
+// Apenas host:port (sem protocolo)
+config := graftel.NewConfig("meu-servico").
+    WithOTLPEndpoint("localhost:4318")
+
+// Host:port com path
+config := graftel.NewConfig("meu-servico").
+    WithOTLPEndpoint("localhost:4318/v1/traces")
+```
+
+**Nota:** A biblioteca processa automaticamente a URL, extraindo o host:port e o path quando necessário. URLs completas com `http://` ou `https://` são automaticamente parseadas.
+
 ### Configuração com Prometheus
 
 Para expor métricas via Prometheus (útil para Grafana):
@@ -242,8 +278,24 @@ config := graftel.NewConfig("meu-servico").
         "team":        "backend",
     }).
     WithMetricExportInterval(30 * time.Second).
-    WithLogExportInterval(30 * time.Second)
+    WithLogExportInterval(30 * time.Second).
+    WithInsecure(true) // Para desenvolvimento local (HTTP sem TLS)
 ```
+
+### Opções de Configuração Disponíveis
+
+| Método | Descrição | Padrão |
+|--------|-----------|--------|
+| `WithServiceVersion(version)` | Define a versão do serviço | `""` |
+| `WithOTLPEndpoint(endpoint)` | Define o endpoint OTLP (aceita URLs completas) | `"http://localhost:4318"` |
+| `WithGrafanaCloudAPIKey(key)` | Define a chave de API do Grafana Cloud | `""` |
+| `WithGrafanaCloudInstanceID(id)` | Define o ID da instância do Grafana Cloud (usado como service.instance.id) | `""` |
+| `WithPrometheusEndpoint(endpoint)` | Define o endpoint para expor métricas Prometheus | `""` |
+| `WithResourceAttribute(key, value)` | Adiciona um atributo ao resource | `{}` |
+| `WithResourceAttributes(attrs)` | Adiciona múltiplos atributos ao resource | `{}` |
+| `WithMetricExportInterval(interval)` | Define o intervalo de exportação de métricas | `30s` |
+| `WithLogExportInterval(interval)` | Define o intervalo de exportação de logs | `30s` |
+| `WithInsecure(insecure)` | Desabilita TLS (apenas para desenvolvimento) | `false` |
 
 ## ☁️ Integração com Grafana Cloud
 
@@ -254,16 +306,74 @@ config := graftel.NewConfig("meu-servico").
     WithServiceVersion("1.0.0").
     WithOTLPEndpoint("https://otlp-gateway-prod-us-central-0.grafana.net/otlp").
     WithGrafanaCloudAPIKey("sua-chave-api-aqui").
+    WithGrafanaCloudInstanceID("seu-instance-id"). // Opcional, mas recomendado
     WithInsecure(false) // Grafana Cloud usa HTTPS
 ```
 
-### Obter Chave de API do Grafana Cloud
+**Importante:** 
+- A URL do Grafana Cloud já inclui o path `/otlp`. A biblioteca processa automaticamente essa URL, extraindo o host e o path corretamente.
+- O Instance ID é opcional, mas recomendado para identificar unicamente cada instância do serviço. Ele será usado como `service.instance.id` no resource OpenTelemetry.
+
+### Obter Chave de API e Instance ID do Grafana Cloud
 
 1. Acesse o [Grafana Cloud](https://grafana.com)
 2. Vá em **Connections** > **Add new connection**
 3. Selecione **OpenTelemetry**
 4. Copie a chave de API fornecida
-5. Configure a variável de ambiente `GRAFANA_CLOUD_API_KEY` ou passe diretamente na configuração
+5. Copie o Instance ID (se disponível)
+6. Configure as variáveis de ambiente:
+   - `GRAFANA_CLOUD_API_KEY` - Chave de API (obrigatória)
+   - `GRAFANA_CLOUD_INSTANCE_ID` - ID da instância (opcional, mas recomendado)
+   - `OTLP_ENDPOINT` - Endpoint OTLP (opcional, tem valor padrão)
+
+### Exemplo Completo com Variáveis de Ambiente
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    "os"
+    
+    "github.com/CristianSsousa/graftel"
+)
+
+func main() {
+    // Obter configurações do ambiente
+    apiKey := os.Getenv("GRAFANA_CLOUD_API_KEY")
+    otlpEndpoint := os.Getenv("OTLP_ENDPOINT")
+    instanceID := os.Getenv("GRAFANA_CLOUD_INSTANCE_ID")
+    
+    if otlpEndpoint == "" {
+        otlpEndpoint = "https://otlp-gateway-prod-us-central-0.grafana.net/otlp"
+    }
+    
+    config := graftel.NewConfig("meu-servico").
+        WithServiceVersion("1.0.0").
+        WithOTLPEndpoint(otlpEndpoint).
+        WithGrafanaCloudAPIKey(apiKey).
+        WithInsecure(false)
+    
+    // Adicionar Instance ID se fornecido
+    if instanceID != "" {
+        config = config.WithGrafanaCloudInstanceID(instanceID)
+    }
+    
+    client, err := graftel.NewClient(config)
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    ctx := context.Background()
+    if err := client.Initialize(ctx); err != nil {
+        log.Fatal(err)
+    }
+    defer client.Shutdown(ctx)
+    
+    // Usar métricas e logs...
+}
+```
 
 ### Exemplo Completo
 
@@ -273,15 +383,53 @@ Veja `examples/grafana-cloud/main.go` para um exemplo completo de integração.
 
 A biblioteca inclui exemplos completos na pasta `examples/`:
 
-- **`examples/basic/`** - Exemplo básico com métricas e logs
-- **`examples/prometheus/`** - Exemplo com Prometheus
-- **`examples/grafana-cloud/`** - Exemplo de integração com Grafana Cloud
+- **`examples/basic/`** - Exemplo básico com métricas e logs usando endpoint local
+- **`examples/prometheus/`** - Exemplo com Prometheus para expor métricas
+- **`examples/grafana-cloud/`** - Exemplo de integração com Grafana Cloud usando URL completa com path
 
 Para executar um exemplo:
 
 ```bash
+# Exemplo básico (endpoint local)
 cd examples/basic
 go run main.go
+
+# Exemplo com Prometheus
+cd examples/prometheus
+go run main.go
+# Acesse http://localhost:8080/metrics
+
+# Exemplo com Grafana Cloud
+cd examples/grafana-cloud
+export GRAFANA_CLOUD_API_KEY="sua-chave-aqui"
+export GRAFANA_CLOUD_INSTANCE_ID="seu-instance-id"  # Opcional
+export OTLP_ENDPOINT="https://otlp-gateway-prod-us-central-0.grafana.net/otlp"
+go run main.go
+```
+
+### Exemplo: Uso com Diferentes Formatos de URL
+
+```go
+// Exemplo 1: URL completa com path (Grafana Cloud)
+config1 := graftel.NewConfig("servico-1").
+    WithOTLPEndpoint("https://otlp-gateway-prod-us-central-0.grafana.net/otlp").
+    WithGrafanaCloudAPIKey("sua-chave").
+    WithInsecure(false)
+
+// Exemplo 2: URL local sem path
+config2 := graftel.NewConfig("servico-2").
+    WithOTLPEndpoint("http://localhost:4318").
+    WithInsecure(true)
+
+// Exemplo 3: Apenas host:port
+config3 := graftel.NewConfig("servico-3").
+    WithOTLPEndpoint("localhost:4318").
+    WithInsecure(true)
+
+// Exemplo 4: Host:port com path customizado
+config4 := graftel.NewConfig("servico-4").
+    WithOTLPEndpoint("localhost:4318/v1/custom").
+    WithInsecure(true)
 ```
 
 ## 🏗️ Estrutura do Projeto

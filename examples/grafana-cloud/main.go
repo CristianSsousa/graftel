@@ -25,12 +25,22 @@ func main() {
 		otlpEndpoint = "https://otlp-gateway-prod-us-central-0.grafana.net/otlp"
 	}
 
+	// Obter Instance ID do Grafana Cloud (opcional, mas recomendado)
+	instanceID := os.Getenv("GRAFANA_CLOUD_INSTANCE_ID")
+
 	// Configurar OpenTelemetry para Grafana Cloud usando o pattern de builder
 	config := graftel.NewConfig("meu-servico-grafana").
 		WithServiceVersion("1.0.0").
 		WithOTLPEndpoint(otlpEndpoint).
 		WithGrafanaCloudAPIKey(apiKey).
-		WithInsecure(false). // Grafana Cloud usa HTTPS
+		WithInsecure(false) // Grafana Cloud usa HTTPS
+
+	// Adicionar Instance ID se fornecido
+	if instanceID != "" {
+		config = config.WithGrafanaCloudInstanceID(instanceID)
+	}
+
+	config = config.
 		WithResourceAttributes(map[string]string{
 			"environment": "production",
 			"team":        "backend",
