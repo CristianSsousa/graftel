@@ -1,0 +1,164 @@
+name: Auto Tag
+
+on:
+    push:
+        branches:
+            - main
+
+permissions:
+    contents: write
+
+jobs:
+    auto-tag:
+        runs-on: ubuntu-latest
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+                  token: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Configure Git
+              run: |
+                  git config user.name "github-actions[bot]"
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
+
+            - name: Get last tag
+              id: last_tag
+              run: |
+                  LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+                  if [ -z "$LAST_TAG" ]; then
+                      echo "last_tag=v0.0.0" >> $GITHUB_OUTPUT
+                      echo "is_first=true" >> $GITHUB_OUTPUT
+                      echo "Primeira tag será criada"
+                  else
+                      echo "last_tag=${LAST_TAG}" >> $GITHUB_OUTPUT
+                      echo "is_first=false" >> $GITHUB_OUTPUT
+                      echo "Última tag: ${LAST_TAG}"
+                  fi
+
+            - name: Check if tag already exists for this commit
+              id: check_tag
+              run: |
+                  CURRENT_COMMIT=$(git rev-parse HEAD)
+                  EXISTING_TAG=$(git tag --points-at HEAD | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+" | head -n 1 || echo "")
+
+                  if [ -n "$EXISTING_TAG" ]; then
+                      echo "tag_exists=true" >> $GITHUB_OUTPUT
+                      echo "existing_tag=${EXISTING_TAG}" >> $GITHUB_OUTPUT
+                      echo "Tag ${EXISTING_TAG} já existe para este commit"
+                  else
+                      echo "tag_exists=false" >> $GITHUB_OUTPUT
+                      echo "Nenhuma tag encontrada para este commit"
+                  fi
+
+            - name: Determine version bump type
+              id: bump_type
+              if: steps.check_tag.outputs.tag_exists == 'false'
+              run: |
+                  LAST_TAG="${{ steps.last_tag.outputs.last_tag }}"
+
+                  if [ "${{ steps.last_tag.outputs.is_first }}" == "true" ]; then
+                      echo "bump_type=minor" >> $GITHUB_OUTPUT
+                      echo "bump_level=first" >> $GITHUB_OUTPUT
+                      echo "Primeira release: v0.1.0"
+                  else
+                      # Analisa commits desde a última tag usando Conventional Commits
+                      # feat: = minor, fix: = patch, BREAKING CHANGE ou ! = major
+                      COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"%s" --no-merges)
+                      
+                      HAS_BREAKING=false
+                      HAS_FEAT=false
+                      HAS_FIX=false
+                      
+                      while IFS= read -r commit; do
+                          # Verifica breaking changes
+                          if echo "$commit" | grep -qiE "(BREAKING CHANGE|!|breaking)"; then
+                              HAS_BREAKING=true
+                          fi
+                          # Verifica features
+                          if echo "$commit" | grep -qiE "^feat(\(.+\))?:"; then
+                              HAS_FEAT=true
+                          fi
+                          # Verifica fixes
+                          if echo "$commit" | grep -qiE "^fix(\(.+\))?:"; then
+                              HAS_FIX=true
+                          fi
+                      done <<< "$COMMITS"
+                      
+                      if [ "$HAS_BREAKING" == "true" ]; then
+                          echo "bump_type=major" >> $GITHUB_OUTPUT
+                          echo "bump_level=major" >> $GITHUB_OUTPUT
+                          echo "Breaking change detectado: MAJOR bump"
+                      elif [ "$HAS_FEAT" == "true" ]; then
+                          echo "bump_type=minor" >> $GITHUB_OUTPUT
+                          echo "bump_level=minor" >> $GITHUB_OUTPUT
+                          echo "Feature detectada: MINOR bump"
+                      elif [ "$HAS_FIX" == "true" ]; then
+                          echo "bump_type=patch" >> $GITHUB_OUTPUT
+                          echo "bump_level=patch" >> $GITHUB_OUTPUT
+                          echo "Fix detectado: PATCH bump"
+                      else
+                          # Se não houver conventional commits, faz patch bump por padrão
+                          echo "bump_type=patch" >> $GITHUB_OUTPUT
+                          echo "bump_level=patch" >> $GITHUB_OUTPUT
+                          echo "Nenhum conventional commit detectado: PATCH bump padrão"
+                      fi
+                  fi
+
+            - name: Calculate new version
+              id: new_version
+              if: steps.check_tag.outputs.tag_exists == 'false'
+              run: |
+                  LAST_TAG="${{ steps.last_tag.outputs.last_tag }}"
+                  BUMP_TYPE="${{ steps.bump_type.outputs.bump_type }}"
+
+                  if [ "${{ steps.last_tag.outputs.is_first }}" == "true" ]; then
+                      NEW_VERSION="v0.1.0"
+                  else
+                      # Remove o 'v' prefixo
+                      VERSION=${LAST_TAG#v}
+                      IFS='.' read -r -a VERSION_PARTS <<< "$VERSION"
+                      MAJOR=${VERSION_PARTS[0]}
+                      MINOR=${VERSION_PARTS[1]}
+                      PATCH=${VERSION_PARTS[2]}
+                      
+                      case "$BUMP_TYPE" in
+                          major)
+                              MAJOR=$((MAJOR + 1))
+                              MINOR=0
+                              PATCH=0
+                              ;;
+                          minor)
+                              MINOR=$((MINOR + 1))
+                              PATCH=0
+                              ;;
+                          patch)
+                              PATCH=$((PATCH + 1))
+                              ;;
+                      esac
+                      
+                      NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+                  fi
+
+                  echo "new_version=${NEW_VERSION}" >> $GITHUB_OUTPUT
+                  echo "Nova versão: ${NEW_VERSION}"
+
+            - name: Create and push tag
+              if: steps.check_tag.outputs.tag_exists == 'false'
+              run: |
+                  NEW_VERSION="${{ steps.new_version.outputs.new_version }}"
+
+                  echo "Criando tag ${NEW_VERSION}..."
+                  git tag -a "${NEW_VERSION}" -m "Release ${NEW_VERSION}"
+
+                  echo "Fazendo push da tag..."
+                  git push origin "${NEW_VERSION}"
+
+                  echo "Tag ${NEW_VERSION} criada e enviada com sucesso!"
+
+            - name: Skip tag creation
+              if: steps.check_tag.outputs.tag_exists == 'true'
+              run: |
+                  echo "Tag ${{ steps.check_tag.outputs.existing_tag }} já existe para este commit. Pulando criação de tag."
