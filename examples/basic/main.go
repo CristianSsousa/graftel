@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/CristianSsousa/graftel"
+	"github.com/CristianSsousa/graftel/v2"
 	"go.opentelemetry.io/otel/attribute"
 )
 
