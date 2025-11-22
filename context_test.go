@@ -24,7 +24,7 @@ func TestWithTags(t *testing.T) {
 func TestGetTagsFromContext(t *testing.T) {
 	ctx := context.Background()
 	tags := GetTagsFromContext(ctx)
-	if tags != nil && len(tags) != 0 {
+	if len(tags) != 0 {
 		t.Fatalf("Esperado tags vazias, obtido %d tags", len(tags))
 	}
 

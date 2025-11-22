@@ -114,3 +114,41 @@ func TestClient_Shutdown(t *testing.T) {
 	}
 }
 
+// TestClient_initializeTraces testa a inicialização de traces
+func TestClient_initializeTraces(t *testing.T) {
+	config := NewConfig("test-service").WithInsecure(true)
+	cl, err := NewClient(config)
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+
+	// Fazer type assertion para acessar o método privado
+	c, ok := cl.(*client)
+	if !ok {
+		t.Fatal("Falha ao fazer type assertion para *client")
+	}
+
+	ctx := context.Background()
+	err = c.initializeTraces(ctx)
+	if err != nil {
+		t.Fatalf("initializeTraces() error = %v", err)
+	}
+
+	// Verificar se o traceProvider foi inicializado
+	if c.traceProvider == nil {
+		t.Error("traceProvider não foi inicializado")
+	}
+
+	// Verificar se GetTracer funciona após inicializar traces
+	tracer := cl.GetTracer("test-tracer")
+	if tracer == nil {
+		t.Error("GetTracer() retornou nil após inicializar traces")
+	}
+
+	// Limpar
+	defer func() {
+		if err := cl.Shutdown(ctx); err != nil {
+			t.Logf("Erro ao encerrar cliente: %v", err)
+		}
+	}()
+}
