@@ -141,4 +141,3 @@ func (h *Histogram) Record(ctx context.Context, value float64, attrs ...attribut
 func (h *Histogram) RecordDuration(ctx context.Context, duration time.Duration, attrs ...attribute.KeyValue) {
 	h.Record(ctx, duration.Seconds(), attrs...)
 }
-
