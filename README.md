@@ -4,13 +4,16 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/CristianSsousa/graftel)](https://goreportcard.com/report/github.com/CristianSsousa/graftel)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Graftel** é uma biblioteca Go que facilita o uso do OpenTelemetry, focada em **métricas e logs**. Projetada para ser simples, intuitiva e seguir as melhores práticas da comunidade Go.
+**Graftel** é uma biblioteca Go que facilita o uso do OpenTelemetry, focada em **métricas, logs e traces**. Projetada para ser simples, intuitiva e seguir as melhores práticas da comunidade Go.
 
 ## 🚀 Características
 
 -   ✅ **Inicialização simplificada** do OpenTelemetry
 -   ✅ **Suporte completo para métricas**: Counter, Gauge, Histogram, UpDownCounter
 -   ✅ **Logs estruturados** com múltiplos níveis (Trace, Debug, Info, Warn, Error, Fatal)
+-   ✅ **Tracing distribuído** - suporte completo a spans e traces
+-   ✅ **Middleware HTTP** - para Gin, Echo, Chi e net/http com observabilidade automática
+-   ✅ **Helpers de contexto** - propagação de tags e context logger
 -   ✅ **Integração com Prometheus** (opcional)
 -   ✅ **Exportação via OTLP HTTP** para sistemas de observabilidade
 -   ✅ **Processamento automático de URLs** - aceita URLs completas com path
@@ -224,6 +227,243 @@ logs.ErrorWithError(ctx, "Erro ao processar", err,
 )
 ```
 
+## 🔍 Tracing (Rastreamento)
+
+### Spans Básicos
+
+```go
+tracing := client.NewTracingHelper("meu-servico")
+
+// Criar um span
+ctx, span := tracing.StartSpanWithTags(ctx, "operacao",
+    attribute.String("user_id", "123"),
+    attribute.String("operation", "processar"),
+)
+defer span.End()
+
+// Executar operação dentro de um span
+err := tracing.WithSpan(ctx, "processar-dados", func(ctx context.Context) error {
+    // Sua lógica aqui
+    return nil
+}, attribute.String("tipo", "batch"))
+```
+
+### Spans com Retorno
+
+```go
+result, err := tracing.WithSpanAndReturn(ctx, "buscar-dados",
+    func(ctx context.Context) (interface{}, error) {
+        // Buscar dados
+        return dados, nil
+    },
+    attribute.String("tabela", "usuarios"),
+)
+```
+
+### Gerenciamento de Erros e Status
+
+```go
+ctx, span := tracing.StartSpan(ctx, "operacao")
+defer span.End()
+
+// Adicionar tags durante a execução
+tracing.AddSpanTags(ctx, attribute.String("progress", "50%"))
+
+// Registrar erro
+if err != nil {
+    tracing.SetSpanError(ctx, err,
+        attribute.String("retry_count", "3"))
+}
+
+// Definir status manualmente
+tracing.SetSpanStatus(ctx, codes.Ok, "Operação concluída")
+```
+
+### Informações de Trace
+
+```go
+traceID := tracing.GetTraceID(ctx)
+spanID := tracing.GetSpanID(ctx)
+fmt.Printf("Trace ID: %s, Span ID: %s\n", traceID, spanID)
+```
+
+### Funções Auxiliares Globais
+
+```go
+// Executar função com span e timing automático
+err := graftel.WithSpanTiming(ctx, "operacao-lenta", func(ctx context.Context) error {
+    // Sua lógica aqui
+    return nil
+}, attribute.String("tipo", "processamento"))
+```
+
+## 🌐 Middleware HTTP
+
+### net/http
+
+```go
+import (
+    "net/http"
+    "github.com/CristianSsousa/graftel"
+)
+
+mux := http.NewServeMux()
+mux.HandleFunc("/api/users", func(w http.ResponseWriter, r *http.Request) {
+    w.Write([]byte("OK"))
+})
+
+config := graftel.DefaultMiddlewareConfig("meu-servico")
+handler := graftel.HTTPMiddleware(client, config)(mux)
+
+http.ListenAndServe(":8080", handler)
+```
+
+### Gin
+
+```go
+import (
+    "github.com/gin-gonic/gin"
+    "github.com/CristianSsousa/graftel"
+)
+
+router := gin.Default()
+config := graftel.DefaultMiddlewareConfig("meu-servico")
+router.Use(graftel.GinMiddleware(client, config))
+
+router.GET("/api/users", func(c *gin.Context) {
+    c.JSON(200, gin.H{"message": "OK"})
+})
+
+router.Run(":8080")
+```
+
+### Echo
+
+```go
+import (
+    "github.com/labstack/echo/v4"
+    "github.com/CristianSsousa/graftel"
+)
+
+e := echo.New()
+config := graftel.DefaultMiddlewareConfig("meu-servico")
+e.Use(graftel.EchoMiddleware(client, config))
+
+e.GET("/api/users", func(c echo.Context) error {
+    return c.JSON(200, map[string]string{"message": "OK"})
+})
+
+e.Start(":8080")
+```
+
+### Chi
+
+```go
+import (
+    "github.com/go-chi/chi/v5"
+    "github.com/CristianSsousa/graftel"
+)
+
+r := chi.NewRouter()
+config := graftel.DefaultMiddlewareConfig("meu-servico")
+r.Use(graftel.ChiMiddleware(client, config))
+
+r.Get("/api/users", func(w http.ResponseWriter, r *http.Request) {
+    w.Write([]byte("OK"))
+})
+
+http.ListenAndServe(":8080", r)
+```
+
+### Configuração do Middleware
+
+```go
+config := graftel.MiddlewareConfig{
+    ServiceName:        "meu-servico",
+    SkipPaths:          []string{"/health", "/metrics", "/ready"},
+    RecordRequestBody:  false,
+    RecordResponseBody: false,
+    MaxBodySize:        4096,
+}
+
+// Ou usar configuração padrão
+config := graftel.DefaultMiddlewareConfig("meu-servico")
+```
+
+O middleware automaticamente captura:
+
+-   **Métricas**: `http_requests_total`, `http_request_duration_seconds`, `http_request_size_bytes`, `http_response_size_bytes`
+-   **Traces**: Spans para cada requisição HTTP
+-   **Logs**: Logs automáticos de requisições e respostas
+
+## 🏷️ Helpers de Contexto
+
+### Adicionar Tags ao Contexto
+
+```go
+// Adicionar tags ao contexto
+ctx = graftel.WithTags(ctx,
+    attribute.String("user_id", "123"),
+    attribute.String("request_id", "req-abc-123"),
+)
+
+// Obter tags do contexto
+tags := graftel.GetTagsFromContext(ctx)
+
+// Mesclar tags existentes com novas
+ctx = graftel.MergeContextTags(ctx,
+    attribute.String("additional_tag", "value"),
+)
+```
+
+### Context Logger
+
+O `ContextLogger` herda automaticamente as tags do contexto:
+
+```go
+// Criar logger com contexto
+ctx = graftel.WithTags(ctx,
+    attribute.String("user_id", "123"),
+    attribute.String("session_id", "sess-456"),
+)
+
+logger := graftel.NewContextLogger(logs, ctx)
+
+// Todos os logs incluirão automaticamente user_id e session_id
+logger.Info("Operação iniciada")
+logger.Error("Erro ao processar", attribute.String("error_code", "E001"))
+
+// Adicionar tags adicionais apenas para este log
+logger.WithTags(attribute.String("step", "validation")).Info("Validação concluída")
+```
+
+### Propagação de Tags
+
+```go
+// Em uma função
+func processarRequisicao(ctx context.Context, userID string) error {
+    // Adicionar tags ao contexto
+    ctx = graftel.WithTags(ctx,
+        attribute.String("user_id", userID),
+        attribute.String("function", "processarRequisicao"),
+    )
+
+    // Criar logger que herda as tags
+    logger := graftel.NewContextLogger(logs, ctx)
+    logger.Info("Processando requisição")
+
+    // Chamar outra função - tags são propagadas
+    return processarDados(ctx)
+}
+
+func processarDados(ctx context.Context) error {
+    // Tags do contexto anterior estão disponíveis
+    logger := graftel.NewContextLogger(logs, ctx)
+    logger.Info("Processando dados") // Inclui user_id e function automaticamente
+    return nil
+}
+```
+
 ## ⚙️ Configuração
 
 ### Formatos de URL Suportados
@@ -425,6 +665,9 @@ A biblioteca inclui exemplos completos na pasta `examples/`:
 -   **`examples/basic/`** - Exemplo básico com métricas e logs usando endpoint local
 -   **`examples/prometheus/`** - Exemplo com Prometheus para expor métricas
 -   **`examples/grafana-cloud/`** - Exemplo usando variáveis de ambiente e autenticação
+-   **`examples/tracing/`** - Exemplo de uso de tracing com spans
+-   **`examples/middleware/`** - Exemplo de middleware HTTP com Gin
+-   **`examples/context/`** - Exemplo de uso de context helpers e context logger
 
 Para executar um exemplo:
 
@@ -444,6 +687,19 @@ export GRAFTEL_SERVICE_NAME="meu-servico"
 export GRAFTEL_OTLP_ENDPOINT="https://otlp.example.com/otlp"
 export GRAFTEL_API_KEY="sua-chave-aqui"
 export GRAFTEL_INSTANCE_ID="seu-instance-id"  # Opcional
+go run main.go
+
+# Exemplo de tracing
+cd examples/tracing
+go run main.go
+
+# Exemplo de middleware HTTP
+cd examples/middleware
+go run main.go
+# Acesse http://localhost:8080/api/users
+
+# Exemplo de context helpers
+cd examples/context
 go run main.go
 ```
 
@@ -481,8 +737,11 @@ config4 := graftel.NewConfig("servico-4").
 ├── config.go             # Configuração com pattern builder
 ├── metrics.go            # Helpers para métricas
 ├── logs.go               # Helpers para logs
+├── tracing.go             # Helpers para tracing
+├── middleware.go         # Middlewares HTTP
+├── context.go            # Helpers de contexto
 ├── errors.go             # Erros customizados
-├── client_test.go        # Testes unitários
+├── *_test.go             # Testes unitários
 ├── examples/             # Exemplos de uso
 │   ├── basic/            # Exemplo básico
 │   ├── prometheus/       # Exemplo com Prometheus
@@ -511,7 +770,10 @@ go test ./graftel/... -v
 -   `go.opentelemetry.io/otel` - OpenTelemetry Go SDK
 -   `go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp` - Exportador OTLP para métricas
 -   `go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp` - Exportador OTLP para logs
+-   `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp` - Exportador OTLP para traces
 -   `go.opentelemetry.io/otel/exporters/prometheus` - Exportador Prometheus
+-   `github.com/gin-gonic/gin` - Framework Gin (opcional, para middleware)
+-   `github.com/labstack/echo/v4` - Framework Echo (opcional, para middleware)
 
 ## 🤝 Contribuindo
 
