@@ -12,10 +12,10 @@ import (
 
 func main() {
 	// Configurar OpenTelemetry usando o pattern de builder
-	config := graftel.NewConfig("meu-servico").
+	config := graftel.NewConfig("meu-test-log").
 		WithServiceVersion("1.0.0").
-		WithOTLPEndpoint("http://localhost:4318").
-		WithInsecure(true). // Para desenvolvimento local
+		//WithOTLPEndpoint("http://localhost:4318").
+		//WithInsecure(true). // Para desenvolvimento local
 		WithResourceAttribute("environment", "development")
 
 	client, err := graftel.NewClient(config)
