@@ -1,4 +1,4 @@
-module github.com/CristianSsousa/graftel
+module github.com/CristianSsousa/graftel/v2
 
 go 1.23.0
 
