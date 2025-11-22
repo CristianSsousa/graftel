@@ -42,4 +42,3 @@ func (e *ErrShutdownFailed) Error() string {
 func (e *ErrShutdownFailed) Unwrap() error {
 	return e.Err
 }
-

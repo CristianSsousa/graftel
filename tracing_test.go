@@ -24,7 +24,7 @@ func TestTracingHelper_StartSpan(t *testing.T) {
 	helper := NewTracingHelper(tracer)
 	ctx := context.Background()
 
-	ctx, span := helper.StartSpan(ctx, "test-span")
+	_, span := helper.StartSpan(ctx, "test-span")
 	if span == nil {
 		t.Fatal("StartSpan retornou span nil")
 	}
@@ -36,7 +36,7 @@ func TestTracingHelper_StartSpanWithTags(t *testing.T) {
 	helper := NewTracingHelper(tracer)
 	ctx := context.Background()
 
-	ctx, span := helper.StartSpanWithTags(ctx, "test-span",
+	_, span := helper.StartSpanWithTags(ctx, "test-span",
 		attribute.String("key1", "value1"),
 		attribute.String("key2", "value2"),
 	)
@@ -189,7 +189,7 @@ func TestTracingHelper_GetSpanID(t *testing.T) {
 
 func TestStartSpan(t *testing.T) {
 	ctx := context.Background()
-	ctx, span := StartSpan(ctx, "test-span",
+	_, span := StartSpan(ctx, "test-span",
 		attribute.String("key", "value"),
 	)
 	if span == nil {

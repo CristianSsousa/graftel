@@ -48,14 +48,20 @@ func TestShouldSkip(t *testing.T) {
 
 func TestHTTPMiddleware(t *testing.T) {
 	client := createTestClientForMiddleware()
-	defer client.Shutdown(context.Background())
+	defer func() {
+		if err := client.Shutdown(context.Background()); err != nil {
+			t.Logf("Erro ao encerrar cliente: %v", err)
+		}
+	}()
 
 	config := DefaultMiddlewareConfig("test-service")
 	middleware := HTTPMiddleware(client, config)
 
 	handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		if _, err := w.Write([]byte("OK")); err != nil {
+			t.Logf("Erro ao escrever resposta: %v", err)
+		}
 	}))
 
 	req := httptest.NewRequest("GET", "/api/test", nil)
@@ -69,7 +75,11 @@ func TestHTTPMiddleware(t *testing.T) {
 
 func TestHTTPMiddleware_SkipPath(t *testing.T) {
 	client := createTestClientForMiddleware()
-	defer client.Shutdown(context.Background())
+	defer func() {
+		if err := client.Shutdown(context.Background()); err != nil {
+			t.Logf("Erro ao encerrar cliente: %v", err)
+		}
+	}()
 
 	config := DefaultMiddlewareConfig("test-service")
 	middleware := HTTPMiddleware(client, config)
@@ -92,7 +102,11 @@ func TestHTTPMiddleware_SkipPath(t *testing.T) {
 func TestGinMiddleware(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	client := createTestClientForMiddleware()
-	defer client.Shutdown(context.Background())
+	defer func() {
+		if err := client.Shutdown(context.Background()); err != nil {
+			t.Logf("Erro ao encerrar cliente: %v", err)
+		}
+	}()
 
 	config := DefaultMiddlewareConfig("test-service")
 	middleware := GinMiddleware(client, config)
@@ -114,7 +128,11 @@ func TestGinMiddleware(t *testing.T) {
 
 func TestEchoMiddleware(t *testing.T) {
 	client := createTestClientForMiddleware()
-	defer client.Shutdown(context.Background())
+	defer func() {
+		if err := client.Shutdown(context.Background()); err != nil {
+			t.Logf("Erro ao encerrar cliente: %v", err)
+		}
+	}()
 
 	config := DefaultMiddlewareConfig("test-service")
 	middleware := EchoMiddleware(client, config)
@@ -136,14 +154,20 @@ func TestEchoMiddleware(t *testing.T) {
 
 func TestChiMiddleware(t *testing.T) {
 	client := createTestClientForMiddleware()
-	defer client.Shutdown(context.Background())
+	defer func() {
+		if err := client.Shutdown(context.Background()); err != nil {
+			t.Logf("Erro ao encerrar cliente: %v", err)
+		}
+	}()
 
 	config := DefaultMiddlewareConfig("test-service")
 	middleware := ChiMiddleware(client, config)
 
 	handler := middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		if _, err := w.Write([]byte("OK")); err != nil {
+			t.Logf("Erro ao escrever resposta: %v", err)
+		}
 	}))
 
 	req := httptest.NewRequest("GET", "/api/test", nil)

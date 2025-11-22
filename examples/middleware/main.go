@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 
-	"github.com/CristianSsousa/graftel"
+	"github.com/CristianSsousa/graftel/v2"
 	"github.com/gin-gonic/gin"
 )
 
