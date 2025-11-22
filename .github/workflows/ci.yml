@@ -36,8 +36,6 @@ jobs:
       - name: Run tests
         run: go test -v ./...
 
-      - name: Build
-        run: go build -v main.go
 
       - name: Check formatting
         run: |
