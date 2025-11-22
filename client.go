@@ -31,13 +31,16 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	otellog "go.opentelemetry.io/otel/log"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Client gerencia a inicialização e uso do OpenTelemetry.
@@ -66,6 +69,12 @@ type Client interface {
 
 	// NewLogsHelper cria um helper para facilitar o uso de logs.
 	NewLogsHelper(name string) LogsHelper
+
+	// GetTracer retorna um Tracer para criar spans e traces.
+	GetTracer(name string, opts ...trace.TracerOption) trace.Tracer
+
+	// NewTracingHelper cria um helper para facilitar o uso de tracing.
+	NewTracingHelper(name string) TracingHelper
 }
 
 // client é a implementação concreta do Client.
@@ -73,6 +82,7 @@ type client struct {
 	config             Config
 	meterProvider      *sdkmetric.MeterProvider
 	loggerProvider     *log.LoggerProvider
+	traceProvider      *sdktrace.TracerProvider
 	prometheusExporter *prometheus.Exporter
 	resource           *resource.Resource
 }
@@ -274,6 +284,65 @@ func (c *client) NewLogsHelper(name string) LogsHelper {
 	return NewLogsHelper(c.GetLogger(name))
 }
 
+// GetTracer retorna um Tracer para criar spans e traces.
+func (c *client) GetTracer(name string, opts ...trace.TracerOption) trace.Tracer {
+	if c.traceProvider == nil {
+		return otel.Tracer(name, opts...)
+	}
+	return c.traceProvider.Tracer(name, opts...)
+}
+
+// NewTracingHelper cria um helper para facilitar o uso de tracing.
+func (c *client) NewTracingHelper(name string) TracingHelper {
+	return NewTracingHelper(c.GetTracer(name))
+}
+
+// initializeTraces configura o provider de traces.
+func (c *client) initializeTraces(ctx context.Context) error {
+	endpoint, urlPath, err := parseOTLPEndpoint(c.config.OTLPEndpoint)
+	if err != nil {
+		return fmt.Errorf("falha ao processar endpoint OTLP: %w", err)
+	}
+
+	opts := []otlptracehttp.Option{
+		otlptracehttp.WithEndpoint(endpoint),
+	}
+
+	if urlPath == "/otlp" {
+		opts = append(opts, otlptracehttp.WithURLPath("/otlp/v1/traces"))
+	} else if urlPath != "" && urlPath != "/" {
+		opts = append(opts, otlptracehttp.WithURLPath(urlPath))
+	}
+
+	if c.config.Insecure {
+		opts = append(opts, otlptracehttp.WithInsecure())
+	}
+
+	opts = append(opts, otlptracehttp.WithTimeout(c.config.ExportTimeout))
+
+	if c.config.APIKey != "" {
+		authHeader := buildAuthHeader(c.config.InstanceID, c.config.APIKey)
+		opts = append(opts, otlptracehttp.WithHeaders(map[string]string{
+			"Authorization": authHeader,
+		}))
+	}
+
+	exporter, err := otlptracehttp.New(ctx, opts...)
+	if err != nil {
+		return fmt.Errorf("falha ao criar exporter de traces OTLP: %w", err)
+	}
+
+	traceProvider := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(c.resource),
+	)
+
+	c.traceProvider = traceProvider
+	otel.SetTracerProvider(traceProvider)
+
+	return nil
+}
+
 // Shutdown encerra o cliente OpenTelemetry de forma segura.
 func (c *client) Shutdown(ctx context.Context) error {
 	var errs []error
@@ -287,6 +356,12 @@ func (c *client) Shutdown(ctx context.Context) error {
 	if c.loggerProvider != nil {
 		if err := c.loggerProvider.Shutdown(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("erro ao encerrar logger provider: %w", err))
+		}
+	}
+
+	if c.traceProvider != nil {
+		if err := c.traceProvider.Shutdown(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("erro ao encerrar trace provider: %w", err))
 		}
 	}
 
