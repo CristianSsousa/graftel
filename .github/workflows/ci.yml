@@ -49,6 +49,4 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         with:
           version: latest
-          # --go=1.23 evita falha quando golangci-lint foi compilado com Go <1.25
-          # mas go.mod declara go 1.25 (exigido por dependências transitivas)
-          args: --timeout=5m --go=1.23
+          args: --timeout=5m
