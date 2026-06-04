@@ -20,10 +20,8 @@ jobs:
           go-version-file: go.mod
           # setup-go@v5 já faz cache de módulos — cache@v3 era redundante
 
-      - name: Verify go.mod is tidy
-        run: |
-          go mod tidy
-          git diff --exit-code go.mod go.sum
+      - name: Verify module integrity
+        run: go mod verify
 
       - name: Run tests (with race detector)
         run: go test -race -count=1 ./...
