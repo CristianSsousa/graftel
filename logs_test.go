@@ -62,6 +62,7 @@ func TestLogsHelper_Log(t *testing.T) {
 func TestLogsHelper_LogLevels(t *testing.T) {
 	logger := createTestLogger()
 	helper := NewLogsHelper(logger).(*logsHelper)
+	helper.exitFunc = func(int) {} // evita os.Exit nos testes
 	ctx := context.Background()
 
 	levels := []struct {
@@ -214,6 +215,7 @@ func TestGetStackTrace(t *testing.T) {
 func TestLogsHelper_WithFieldsMethods(t *testing.T) {
 	logger := createTestLogger()
 	helper := NewLogsHelper(logger).(*logsHelper)
+	helper.exitFunc = func(int) {} // evita os.Exit nos testes
 	ctx := context.Background()
 	fields := map[string]interface{}{"field": "value"}
 
@@ -238,6 +240,34 @@ func TestLogsHelper_ErrorWithError(t *testing.T) {
 
 	err := fmt.Errorf("test error")
 	helper.ErrorWithError(ctx, "test", err, attribute.String("tag", "value"))
+}
+
+func TestLogsHelper_LogWithError_NilError(t *testing.T) {
+	logger := createTestLogger()
+	helper := NewLogsHelper(logger).(*logsHelper)
+	ctx := context.Background()
+
+	// não deve causar panic
+	helper.LogWithError(ctx, LogLevelError, "test message", nil)
+}
+
+func TestLogsHelper_Fatal_CallsExit(t *testing.T) {
+	logger := createTestLogger()
+	helper := NewLogsHelper(logger).(*logsHelper)
+	ctx := context.Background()
+
+	exitCalled := false
+	helper.exitFunc = func(code int) {
+		exitCalled = true
+		if code != 1 {
+			t.Errorf("exitFunc chamado com código %d, esperado 1", code)
+		}
+	}
+
+	helper.Fatal(ctx, "fatal message")
+	if !exitCalled {
+		t.Error("Fatal não chamou exitFunc")
+	}
 }
 
 func TestFormatTags_AllTypes(t *testing.T) {

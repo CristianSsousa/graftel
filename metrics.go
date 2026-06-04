@@ -44,15 +44,13 @@ type Counter struct {
 }
 
 // NewCounter cria um novo contador.
+// O SDK OTel retorna um contador no-op em caso de erro, portanto o instrumento
+// retornado é sempre utilizável mesmo quando err != nil.
 func (m *metricsHelper) NewCounter(name, description string, opts ...otelmetric.Int64CounterOption) (*Counter, error) {
 	counter, err := m.meter.Int64Counter(name, append([]otelmetric.Int64CounterOption{
 		otelmetric.WithDescription(description),
 	}, opts...)...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Counter{counter: counter}, nil
+	return &Counter{counter: counter}, err
 }
 
 // Add incrementa o contador pelo valor especificado.
@@ -76,11 +74,7 @@ func (m *metricsHelper) NewGauge(name, description string, callback func(context
 		otelmetric.WithDescription(description),
 		otelmetric.WithFloat64Callback(callback),
 	}, opts...)...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Gauge{gauge: gauge}, nil
+	return &Gauge{gauge: gauge}, err
 }
 
 // UpDownCounter representa um contador que pode incrementar ou decrementar.
@@ -93,11 +87,7 @@ func (m *metricsHelper) NewUpDownCounter(name, description string, opts ...otelm
 	counter, err := m.meter.Int64UpDownCounter(name, append([]otelmetric.Int64UpDownCounterOption{
 		otelmetric.WithDescription(description),
 	}, opts...)...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &UpDownCounter{counter: counter}, nil
+	return &UpDownCounter{counter: counter}, err
 }
 
 // Add adiciona (ou subtrai) um valor ao contador.
@@ -125,11 +115,7 @@ func (m *metricsHelper) NewHistogram(name, description string, opts ...otelmetri
 	histogram, err := m.meter.Float64Histogram(name, append([]otelmetric.Float64HistogramOption{
 		otelmetric.WithDescription(description),
 	}, opts...)...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &Histogram{histogram: histogram}, nil
+	return &Histogram{histogram: histogram}, err
 }
 
 // Record registra um valor no histograma.

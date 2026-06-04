@@ -1,14 +1,18 @@
 package graftel
 
 import (
+	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/labstack/echo/v4"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -40,15 +44,25 @@ func shouldSkip(path string, skipPaths []string) bool {
 	return false
 }
 
+func logMetricError(name string, err error) {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "graftel: falha ao criar instrumento %q: %v\n", name, err)
+	}
+}
+
 func HTTPMiddleware(client Client, config MiddlewareConfig) func(http.Handler) http.Handler {
 	tracing := client.NewTracingHelper(config.ServiceName)
 	metrics := client.NewMetricsHelper(config.ServiceName + "/http")
 	logs := client.NewLogsHelper(config.ServiceName + "/http")
 
-	requestCounter, _ := metrics.NewCounter("http_requests_total", "Total de requisições HTTP")
-	requestDuration, _ := metrics.NewHistogram("http_request_duration_seconds", "Duração das requisições HTTP em segundos")
-	requestSize, _ := metrics.NewHistogram("http_request_size_bytes", "Tamanho das requisições HTTP em bytes")
-	responseSize, _ := metrics.NewHistogram("http_response_size_bytes", "Tamanho das respostas HTTP em bytes")
+	requestCounter, err := metrics.NewCounter("http_requests_total", "Total de requisições HTTP")
+	logMetricError("http_requests_total", err)
+	requestDuration, err := metrics.NewHistogram("http_request_duration_seconds", "Duração das requisições HTTP em segundos")
+	logMetricError("http_request_duration_seconds", err)
+	requestSize, err := metrics.NewHistogram("http_request_size_bytes", "Tamanho das requisições HTTP em bytes")
+	logMetricError("http_request_size_bytes", err)
+	responseSize, err := metrics.NewHistogram("http_response_size_bytes", "Tamanho das respostas HTTP em bytes")
+	logMetricError("http_response_size_bytes", err)
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -59,6 +73,7 @@ func HTTPMiddleware(client Client, config MiddlewareConfig) func(http.Handler) h
 
 			start := time.Now()
 			ctx := r.Context()
+			ctx = otel.GetTextMapPropagator().Extract(ctx, propagation.HeaderCarrier(r.Header))
 
 			ctx, span := tracing.StartSpan(ctx, "http.request",
 				trace.WithAttributes(
@@ -165,10 +180,14 @@ func GinMiddleware(client Client, config MiddlewareConfig) gin.HandlerFunc {
 	metrics := client.NewMetricsHelper(config.ServiceName + "/http")
 	logs := client.NewLogsHelper(config.ServiceName + "/http")
 
-	requestCounter, _ := metrics.NewCounter("http_requests_total", "Total de requisições HTTP")
-	requestDuration, _ := metrics.NewHistogram("http_request_duration_seconds", "Duração das requisições HTTP")
-	requestSize, _ := metrics.NewHistogram("http_request_size_bytes", "Tamanho das requisições HTTP")
-	responseSize, _ := metrics.NewHistogram("http_response_size_bytes", "Tamanho das respostas HTTP")
+	requestCounter, err := metrics.NewCounter("http_requests_total", "Total de requisições HTTP")
+	logMetricError("http_requests_total", err)
+	requestDuration, err := metrics.NewHistogram("http_request_duration_seconds", "Duração das requisições HTTP")
+	logMetricError("http_request_duration_seconds", err)
+	requestSize, err := metrics.NewHistogram("http_request_size_bytes", "Tamanho das requisições HTTP")
+	logMetricError("http_request_size_bytes", err)
+	responseSize, err := metrics.NewHistogram("http_response_size_bytes", "Tamanho das respostas HTTP")
+	logMetricError("http_response_size_bytes", err)
 
 	return func(c *gin.Context) {
 		if shouldSkip(c.Request.URL.Path, config.SkipPaths) {
@@ -178,6 +197,7 @@ func GinMiddleware(client Client, config MiddlewareConfig) gin.HandlerFunc {
 
 		start := time.Now()
 		ctx := c.Request.Context()
+		ctx = otel.GetTextMapPropagator().Extract(ctx, propagation.HeaderCarrier(c.Request.Header))
 
 		ctx, span := tracing.StartSpan(ctx, "http.request",
 			trace.WithAttributes(
@@ -264,10 +284,14 @@ func EchoMiddleware(client Client, config MiddlewareConfig) echo.MiddlewareFunc 
 	metrics := client.NewMetricsHelper(config.ServiceName + "/http")
 	logs := client.NewLogsHelper(config.ServiceName + "/http")
 
-	requestCounter, _ := metrics.NewCounter("http_requests_total", "Total de requisições HTTP")
-	requestDuration, _ := metrics.NewHistogram("http_request_duration_seconds", "Duração das requisições HTTP")
-	requestSize, _ := metrics.NewHistogram("http_request_size_bytes", "Tamanho das requisições HTTP")
-	responseSize, _ := metrics.NewHistogram("http_response_size_bytes", "Tamanho das respostas HTTP")
+	requestCounter, err := metrics.NewCounter("http_requests_total", "Total de requisições HTTP")
+	logMetricError("http_requests_total", err)
+	requestDuration, err := metrics.NewHistogram("http_request_duration_seconds", "Duração das requisições HTTP")
+	logMetricError("http_request_duration_seconds", err)
+	requestSize, err := metrics.NewHistogram("http_request_size_bytes", "Tamanho das requisições HTTP")
+	logMetricError("http_request_size_bytes", err)
+	responseSize, err := metrics.NewHistogram("http_response_size_bytes", "Tamanho das respostas HTTP")
+	logMetricError("http_response_size_bytes", err)
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -277,6 +301,7 @@ func EchoMiddleware(client Client, config MiddlewareConfig) echo.MiddlewareFunc 
 
 			start := time.Now()
 			ctx := c.Request().Context()
+			ctx = otel.GetTextMapPropagator().Extract(ctx, propagation.HeaderCarrier(c.Request().Header))
 
 			ctx, span := tracing.StartSpan(ctx, "http.request",
 				trace.WithAttributes(
