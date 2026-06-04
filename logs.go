@@ -66,13 +66,15 @@ type LogsHelper interface {
 
 // logsHelper é a implementação concreta do LogsHelper.
 type logsHelper struct {
-	logger otellog.Logger
+	logger   otellog.Logger
+	exitFunc func(int)
 }
 
 // NewLogsHelper cria um novo helper de logs.
 func NewLogsHelper(logger otellog.Logger) LogsHelper {
 	return &logsHelper{
-		logger: logger,
+		logger:   logger,
+		exitFunc: os.Exit,
 	}
 }
 
@@ -189,6 +191,10 @@ func (l *logsHelper) LogWithFields(ctx context.Context, level LogLevel, msg stri
 
 // LogWithError envia um log de erro com uma mensagem de erro.
 func (l *logsHelper) LogWithError(ctx context.Context, level LogLevel, msg string, err error, tags ...attribute.KeyValue) {
+	if err == nil {
+		l.Log(ctx, level, msg, tags...)
+		return
+	}
 	errorTags := []attribute.KeyValue{
 		attribute.String("error", err.Error()),
 	}
@@ -221,9 +227,10 @@ func (l *logsHelper) Error(ctx context.Context, msg string, tags ...attribute.Ke
 	l.Log(ctx, LogLevelError, msg, tags...)
 }
 
-// Fatal envia um log de nível fatal.
+// Fatal envia um log de nível fatal e encerra o processo.
 func (l *logsHelper) Fatal(ctx context.Context, msg string, tags ...attribute.KeyValue) {
 	l.Log(ctx, LogLevelFatal, msg, tags...)
+	l.exitFunc(1)
 }
 
 // TraceWithFields envia um log trace com campos extras.
@@ -251,9 +258,10 @@ func (l *logsHelper) ErrorWithFields(ctx context.Context, msg string, fields map
 	l.LogWithFields(ctx, LogLevelError, msg, fields, tags...)
 }
 
-// FatalWithFields envia um log fatal com campos extras.
+// FatalWithFields envia um log fatal com campos extras e encerra o processo.
 func (l *logsHelper) FatalWithFields(ctx context.Context, msg string, fields map[string]interface{}, tags ...attribute.KeyValue) {
 	l.LogWithFields(ctx, LogLevelFatal, msg, fields, tags...)
+	l.exitFunc(1)
 }
 
 // ErrorWithError envia um log de erro com uma mensagem de erro.

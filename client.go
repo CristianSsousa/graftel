@@ -35,6 +35,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/prometheus"
 	otellog "go.opentelemetry.io/otel/log"
 	otelmetric "go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -106,16 +107,18 @@ func NewClient(config Config) (Client, error) {
 	}, nil
 }
 
-// Initialize inicializa o OpenTelemetry com métricas e logs.
+// Initialize inicializa o OpenTelemetry com métricas, logs e traces.
 func (c *client) Initialize(ctx context.Context) error {
-	// Inicializar métricas
 	if err := c.initializeMetrics(ctx); err != nil {
 		return fmt.Errorf("falha ao inicializar métricas: %w", err)
 	}
 
-	// Inicializar logs
 	if err := c.initializeLogs(ctx); err != nil {
 		return fmt.Errorf("falha ao inicializar logs: %w", err)
+	}
+
+	if err := c.initializeTraces(ctx); err != nil {
+		return fmt.Errorf("falha ao inicializar traces: %w", err)
 	}
 
 	return nil
@@ -237,7 +240,10 @@ func (c *client) initializeLogs(ctx context.Context) error {
 	// Criar LoggerProvider
 	loggerProvider := log.NewLoggerProvider(
 		log.WithResource(c.resource),
-		log.WithProcessor(log.NewBatchProcessor(exporter)),
+		log.WithProcessor(log.NewBatchProcessor(exporter,
+			log.WithExportInterval(c.config.LogExportInterval),
+			log.WithExportTimeout(c.config.ExportTimeout),
+		)),
 	)
 
 	c.loggerProvider = loggerProvider
@@ -339,6 +345,10 @@ func (c *client) initializeTraces(ctx context.Context) error {
 
 	c.traceProvider = traceProvider
 	otel.SetTracerProvider(traceProvider)
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
 
 	return nil
 }
@@ -373,16 +383,15 @@ func (c *client) Shutdown(ctx context.Context) error {
 }
 
 // buildAuthHeader constrói o header de autenticação.
-// O formato é: Basic <base64(instance_id:api_key)>
+// Com InstanceID: Basic <base64(instance_id:api_key)>
+// Sem InstanceID: Bearer <api_key>
 func buildAuthHeader(instanceID, apiKey string) string {
 	if instanceID != "" {
-		// Formato: instance_id:api_key codificado em base64
 		credentials := instanceID + ":" + apiKey
 		encoded := base64.StdEncoding.EncodeToString([]byte(credentials))
 		return "Basic " + encoded
 	}
-	// Se não tiver instance ID, usar apenas a API key (formato alternativo)
-	return "Basic " + apiKey
+	return "Bearer " + apiKey
 }
 
 // parseOTLPEndpoint extrai o host:port e o path de uma URL OTLP.
