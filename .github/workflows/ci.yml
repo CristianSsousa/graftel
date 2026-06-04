@@ -12,30 +12,21 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version-file: go.mod
+          # setup-go@v5 já faz cache de módulos — cache@v3 era redundante
 
-      - name: Cache Go modules
-        uses: actions/cache@v3
-        with:
-          path: ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+      - name: Verify go.mod is tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
 
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Run tests
-        run: go test -v ./...
-
+      - name: Run tests (with race detector)
+        run: go test -race -count=1 ./...
 
       - name: Check formatting
         run: |
@@ -48,18 +39,16 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
-
+    needs: test
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
-          go-version: "1.23"
+          go-version-file: go.mod
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@v6
         with:
           version: latest
-          args: --timeout=5m --out-format=colored-line-number
+          args: --timeout=5m
